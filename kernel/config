@@ -1,0 +1,72 @@
+# GHL kernel config fragment.
+#
+# This is merged on top of `make tinyconfig` (a nearly-empty config) and then
+# resolved with `make olddefconfig`. Anything not listed here stays off.
+#
+# Only turn on what the guitar needs: boot from initramfs, a serial + VT
+# console, USB input (the guitar controller), virtio (dev/test in QEMU),
+# a network stack (song downloads), and a couple of filesystems for the
+# future on-disk root.
+
+# --- architecture ---
+# tinyconfig/allnoconfig defaults to a 32-bit x86 kernel. Without this the
+# kernel is CONFIG_X86_32 and rejects every 64-bit binary with ENOEXEC.
+CONFIG_64BIT=y
+
+# --- boot ---
+CONFIG_BLK_DEV_INITRD=y
+CONFIG_RD_GZIP=y
+CONFIG_BINFMT_ELF=y
+CONFIG_ACPI=y
+CONFIG_EFI=y
+CONFIG_EFI_STUB=y
+
+# --- kernel basics ---
+CONFIG_PRINTK=y
+CONFIG_BUG=y
+CONFIG_TTY=y
+CONFIG_VT=y
+
+# --- console ---
+CONFIG_SERIAL_8250=y
+CONFIG_SERIAL_8250_CONSOLE=y
+CONFIG_SERIAL_8250_NR_UARTS=4
+
+# --- pseudo filesystems ---
+CONFIG_PROC_FS=y
+CONFIG_SYSFS=y
+CONFIG_TMPFS=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+
+# --- real filesystems (future on-disk root) ---
+CONFIG_EXT4_FS=y
+CONFIG_SQUASHFS=y
+
+# --- network ---
+CONFIG_NET=y
+CONFIG_PACKET=y
+CONFIG_UNIX=y
+CONFIG_INET=y
+
+# --- virtio (QEMU) ---
+CONFIG_VIRTIO=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_MMIO=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_CONSOLE=y
+
+# --- input / USB (guitar controller!) ---
+CONFIG_INPUT=y
+CONFIG_INPUT_EVDEV=y
+CONFIG_INPUT_KEYBOARD=y
+CONFIG_HID=y
+CONFIG_HID_GENERIC=y
+CONFIG_USB=y
+CONFIG_USB_XHCI_HCD=y
+CONFIG_USB_HID=y
+
+# --- display (eventual framebuffer for Clone Hero) ---
+CONFIG_FB=y
+CONFIG_FB_EFI=y

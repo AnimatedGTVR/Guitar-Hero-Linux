@@ -1,0 +1,10 @@
+# Go build output
+tools/ampkg/ampkg
+
+# GHL build output
+build/
+
+# Editor junk
+*.swp
+*~
+.DS_Store
