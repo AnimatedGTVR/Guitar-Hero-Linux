@@ -12,7 +12,7 @@ Guitar Hero Linux (GHL) is a tiny Linux distribution built for one very specific
 
 That's it.
 
-The goal of GHL is to be an extremely small, purpose-built Linux system that boots directly into Clone Hero without needing a normal desktop environment.
+The goal of GHL is to be an extremely small, purpose-built Linux system that is ment to boot Clone Hero without needing a normal desktop environment!
 
 ## The Idea
 
