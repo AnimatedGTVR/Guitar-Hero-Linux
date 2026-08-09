@@ -1,0 +1,10 @@
+pkgname = base
+pkgver = 1.0
+pkgrel = 1
+pkgdesc = "GHL base system meta-package"
+depends = (
+    busybox
+)
+files = (
+    packages/base/ghl-release  usr/etc/ghl-release
+)

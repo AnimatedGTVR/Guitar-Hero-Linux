@@ -1,0 +1,43 @@
+pkgname = busybox
+pkgver = 1.38.0
+pkgrel = 1
+pkgdesc = "GHL base userspace (busybox)"
+files = (
+    build/out/busybox  usr/bin/busybox
+)
+links = (
+    busybox  usr/bin/sh
+    busybox  usr/bin/ls
+    busybox  usr/bin/cat
+    busybox  usr/bin/echo
+    busybox  usr/bin/mount
+    busybox  usr/bin/umount
+    busybox  usr/bin/cp
+    busybox  usr/bin/mv
+    busybox  usr/bin/rm
+    busybox  usr/bin/mkdir
+    busybox  usr/bin/pwd
+    busybox  usr/bin/sleep
+    busybox  usr/bin/ps
+    busybox  usr/bin/kill
+    busybox  usr/bin/grep
+    busybox  usr/bin/sed
+    busybox  usr/bin/awk
+    busybox  usr/bin/touch
+    busybox  usr/bin/uname
+    busybox  usr/bin/hostname
+    busybox  usr/bin/wget
+    busybox  usr/bin/ifconfig
+    busybox  usr/bin/udhcpc
+    busybox  usr/bin/ping
+    busybox  usr/bin/telnet
+    busybox  usr/bin/halt
+    busybox  usr/bin/poweroff
+    busybox  usr/bin/reboot
+    busybox  usr/bin/dmesg
+    busybox  usr/bin/clear
+    busybox  usr/bin/vi
+    busybox  usr/bin/tar
+    busybox  usr/bin/gzip
+    busybox  usr/bin/gunzip
+)
