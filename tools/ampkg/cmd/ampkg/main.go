@@ -19,6 +19,7 @@ usage:
   ampkg repo-add <dir>      (re)build the repo index in <dir>
   ampkg install <pkg>...    install packages and their dependencies
   ampkg remove <pkg>...     remove packages
+  ampkg upgrade            upgrade installed packages
   ampkg search <term>       search the repo
   ampkg list                list installed packages
 
@@ -93,6 +94,8 @@ func main() {
 		err = cmdInstall(vals, rest)
 	case "remove":
 		err = cmdRemove(vals, rest)
+	case "upgrade":
+		err = cmdUpgrade(vals)
 	case "search":
 		err = cmdSearch(vals, rest)
 	case "list":
@@ -185,6 +188,22 @@ func cmdRemove(vals map[string]string, names []string) error {
 	}
 	for _, n := range names {
 		fmt.Printf("removed %s\n", n)
+	}
+	return nil
+}
+
+func cmdUpgrade(vals map[string]string) error {
+	c := core.New(config(vals))
+	done, err := c.Upgrade()
+	if err != nil {
+		return err
+	}
+	if len(done) == 0 {
+		fmt.Println("nothing to upgrade")
+		return nil
+	}
+	for _, n := range done {
+		fmt.Printf("upgraded %s\n", n)
 	}
 	return nil
 }

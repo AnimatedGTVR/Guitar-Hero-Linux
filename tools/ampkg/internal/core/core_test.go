@@ -112,3 +112,63 @@ func TestSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUpgrade(t *testing.T) {
+	root := t.TempDir()
+
+	// repo1: old versions. Install base (pulls busybox 1.0).
+	repo1 := t.TempDir()
+	writePkg(t, repo1, "busybox", "1.0-1", nil, map[string]string{"usr/bin/busybox": "bb"})
+	writePkg(t, repo1, "base", "1.0-1", []string{"busybox"}, map[string]string{"usr/etc/ghl-release": "ghl"})
+	if _, err := repo.Build(repo1); err != nil {
+		t.Fatal(err)
+	}
+	c1 := New(Config{Root: root, RepoDir: repo1})
+	if _, err := c1.Install("base"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Nothing newer yet -> no-op.
+	done, err := c1.Upgrade()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(done) != 0 {
+		t.Fatalf("expected no-op, got %v", done)
+	}
+
+	// repo2: newer busybox. base is a dependent, so it's reinstalled too.
+	repo2 := t.TempDir()
+	writePkg(t, repo2, "busybox", "2.0-1", nil, map[string]string{"usr/bin/busybox": "bb2"})
+	writePkg(t, repo2, "base", "1.0-1", []string{"busybox"}, map[string]string{"usr/etc/ghl-release": "ghl"})
+	if _, err := repo.Build(repo2); err != nil {
+		t.Fatal(err)
+	}
+	c2 := New(Config{Root: root, RepoDir: repo2})
+	done, err = c2.Upgrade()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(done) != 2 {
+		t.Fatalf("upgrade = %v, want 2 packages", done)
+	}
+
+	installed, err := c2.Installed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]string{}
+	for _, m := range installed {
+		byName[m.Name] = m.Version
+	}
+	if byName["busybox"] != "2.0-1" {
+		t.Errorf("busybox version = %q, want 2.0-1", byName["busybox"])
+	}
+	b, err := os.ReadFile(filepath.Join(root, "usr/bin/busybox"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "bb2" {
+		t.Errorf("busybox content = %q, want bb2", b)
+	}
+}

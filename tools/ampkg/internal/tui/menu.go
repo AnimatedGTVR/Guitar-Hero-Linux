@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"ghl/ampkg/internal/core"
+	"ghl/ampkg/internal/repo"
 )
 
 const helpText = "↑/↓ navigate · enter select · q/ctrl+c quit"
@@ -42,8 +43,8 @@ func newMenuModel(cfg *core.Config) menuModel {
 			{label: "Install", desc: "Install packages from a GHL repo", run: installScreen},
 			{label: "Remove", desc: "Remove installed packages", run: removeScreen},
 			{label: "Search", desc: "Search packages in the configured repos", run: searchScreen},
-			{label: "Update", desc: "Update the package database", run: func(*core.Config) tea.Model { return stubScreen("Update", "not implemented yet") }},
-			{label: "Upgrade", desc: "Upgrade all installed packages", run: func(*core.Config) tea.Model { return stubScreen("Upgrade", "not implemented yet") }},
+			{label: "Update", desc: "Rebuild the package database", run: updateScreen},
+			{label: "Upgrade", desc: "Upgrade all installed packages", run: upgradeScreen},
 			{label: "Quit", desc: "Exit ampkg", run: nil},
 		},
 	}
@@ -96,9 +97,26 @@ func (m menuModel) View() string {
 	return b.String()
 }
 
-// stubScreen is a placeholder for features that aren't real yet.
-func stubScreen(title, status string) tea.Model {
-	return messageModel{title: title, status: status, back: newMenuModel(&core.Config{})}
+// updateScreen rebuilds the repo index and reports how many packages it found.
+func updateScreen(cfg *core.Config) tea.Model {
+	entries, err := repo.Build(cfg.RepoDir)
+	status := fmt.Sprintf("indexed %d package(s) from %s", len(entries), cfg.RepoDir)
+	if err != nil {
+		status = "error: " + err.Error()
+	}
+	return messageModel{title: "Update", status: status, back: newMenuModel(cfg)}
+}
+
+// upgradeScreen upgrades installed packages, reporting what changed.
+func upgradeScreen(cfg *core.Config) tea.Model {
+	done, err := core.New(*cfg).Upgrade()
+	status := "nothing to upgrade"
+	if err != nil {
+		status = "error: " + err.Error()
+	} else if len(done) > 0 {
+		status = "upgraded: " + strings.Join(done, ", ")
+	}
+	return messageModel{title: "Upgrade", status: status, back: newMenuModel(cfg)}
 }
 
 // Run starts the ampkg TUI.

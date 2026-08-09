@@ -11,16 +11,17 @@ Rough plan, in order. Things will change as we actually do them.
 - [x] Minimal init (`init/init.c`)
 - [x] Kernel config + build script
 - [x] First boot to the GHL init (~400ms to init under QEMU/KVM)
-- [ ] Shell in the initramfs
+- [x] Bootable BIOS+UEFI ISO (`make iso`)
+- [x] Shell in the initramfs (busybox ash + coreutils, static)
 
 ## Phase 1 — ampkg
 
-- [ ] Recipe format (`packages/`)
-- [ ] `.ampkg` archive format
-- [ ] Local repo + index
-- [ ] TUI: search / install / remove / upgrade
-- [ ] Dependencies
-- [ ] `base` meta-package
+- [x] Recipe format (`packages/`)
+- [x] `.ampkg` archive format
+- [x] Local repo + index (`repo-add`)
+- [x] TUI: search / install / remove / update / upgrade
+- [x] Dependencies
+- [x] `base` meta-package
 
 ## Phase 2 — Userspace
 

@@ -11,6 +11,7 @@ import (
 	"ghl/ampkg/internal/db"
 	"ghl/ampkg/internal/pkg"
 	"ghl/ampkg/internal/repo"
+	"ghl/ampkg/internal/version"
 )
 
 // Config configures operations.
@@ -122,7 +123,8 @@ func (c *Core) Install(names ...string) ([]string, error) {
 	return installedNow, nil
 }
 
-// Remove uninstalls names, refusing when something still depends on them.
+// Remove uninstalls names, refusing when something that is not also being
+// removed still depends on them.
 func (c *Core) Remove(names ...string) error {
 	db := db.New(c.cfg.Root)
 	installed, err := db.Installed()
@@ -130,10 +132,18 @@ func (c *Core) Remove(names ...string) error {
 		return err
 	}
 
+	removing := make(map[string]bool, len(names))
+	for _, n := range names {
+		removing[n] = true
+	}
+
 	for _, n := range names {
 		for _, m := range installed {
 			if m.Name == n {
 				continue
+			}
+			if removing[m.Name] {
+				continue // it goes away too, so no conflict
 			}
 			for _, dep := range m.Deps {
 				if dep == n {
@@ -146,10 +156,6 @@ func (c *Core) Remove(names ...string) error {
 	owned, err := db.Ownership()
 	if err != nil {
 		return err
-	}
-	removing := make(map[string]bool, len(names))
-	for _, n := range names {
-		removing[n] = true
 	}
 
 	for _, n := range names {
@@ -168,6 +174,73 @@ func (c *Core) Remove(names ...string) error {
 		}
 	}
 	return nil
+}
+
+// Upgrade reinstalls installed packages for which the repo has a newer
+// version. Packages that depend on an upgraded package are upgraded too,
+// even if the repo doesn't have a newer build of them, so that the system
+// never contains a mix of broken old/new pairs. It returns the names
+// upgraded, in install order.
+func (c *Core) Upgrade() ([]string, error) {
+	entries, err := c.Repo()
+	if err != nil {
+		return nil, err
+	}
+	inRepo := make(map[string]repo.Entry, len(entries))
+	for _, e := range entries {
+		inRepo[e.Meta.Name] = e
+	}
+
+	installed, err := db.New(c.cfg.Root).Installed()
+	if err != nil {
+		return nil, err
+	}
+	installedNames := make(map[string]*pkg.Metadata, len(installed))
+	for _, m := range installed {
+		installedNames[m.Name] = m
+	}
+
+	upgrade := make(map[string]bool)
+	for _, m := range installed {
+		if e, ok := inRepo[m.Name]; ok && version.Compare(e.Meta.Version, m.Version) > 0 {
+			upgrade[m.Name] = true
+		}
+	}
+	if len(upgrade) == 0 {
+		return nil, nil
+	}
+
+	// Pull in dependents so nothing references a removed version.
+	changed := true
+	for changed {
+		changed = false
+		for _, m := range installed {
+			if upgrade[m.Name] {
+				continue
+			}
+			if _, ok := inRepo[m.Name]; !ok {
+				continue // can't reinstall it; leave it alone
+			}
+			for _, dep := range m.Deps {
+				if upgrade[dep] {
+					upgrade[m.Name] = true
+					changed = true
+					break
+				}
+			}
+		}
+	}
+
+	names := make([]string, 0, len(upgrade))
+	for n := range upgrade {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	if err := c.Remove(names...); err != nil {
+		return nil, err
+	}
+	return c.Install(names...)
 }
 
 // Search matches term against package names and descriptions in the repo.
