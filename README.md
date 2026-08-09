@@ -28,7 +28,17 @@ tools/ampkg the package manager (Go TUI)
 
 ## Status
 
-Very early. Mostly ideas and experiments that'll probably get rewritten a bunch.
+Working: the kernel boots into the GHL init under half a second, and there's a bootable ISO. Still very early everywhere else — expect things to get rewritten.
+
+## Building
+
+```sh
+make            # kernel + initramfs
+make qemu       # build and boot in QEMU
+make iso        # build a bootable ISO
+```
+
+See `scripts/README.md` and `docs/roadmap.md` for details.
 
 ## Disclaimer
 

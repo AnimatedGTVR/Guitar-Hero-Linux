@@ -8,14 +8,17 @@
 BUILD_DIR := build
 OUT       := $(BUILD_DIR)/out
 
-.PHONY: all kernel initramfs qemu iso clean
+.PHONY: all kernel busybox initramfs qemu iso clean
 
 all: kernel initramfs
 
 kernel:
 	bash scripts/build-kernel.sh
 
-initramfs:
+busybox:
+	bash scripts/build-busybox.sh
+
+initramfs: busybox
 	bash scripts/build-initramfs.sh
 
 qemu: all
