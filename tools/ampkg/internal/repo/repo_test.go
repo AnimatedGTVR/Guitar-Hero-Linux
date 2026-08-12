@@ -42,4 +42,21 @@ func TestBuildAndRead(t *testing.T) {
 	if len(entries) != 1 || entries[0].Meta.Name != "a" || entries[0].Meta.Version != "1.0-1" {
 		t.Errorf("read back = %+v", entries)
 	}
+	if entries[0].Meta.Desc != m.Desc {
+		t.Errorf("description = %q, want %q", entries[0].Meta.Desc, m.Desc)
+	}
+}
+
+func TestReadLegacyIndex(t *testing.T) {
+	path := filepath.Join(t.TempDir(), IndexName)
+	if err := os.WriteFile(path, []byte("a|1.0-1|a.ampkg|b c\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || len(entries[0].Meta.Deps) != 2 || entries[0].Meta.Desc != "" {
+		t.Fatalf("legacy entry = %+v", entries)
+	}
 }

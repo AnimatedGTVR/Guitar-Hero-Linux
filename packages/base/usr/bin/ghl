@@ -1,0 +1,103 @@
+#!/bin/sh
+set -u
+
+cyan='\033[1;36m'
+green='\033[1;32m'
+yellow='\033[1;33m'
+reset='\033[0m'
+
+heading() {
+    printf '%bGuitar Hero Linux%b  %s\n' "$cyan" "$reset" "$1"
+}
+
+check() {
+    label=$1
+    shift
+    if "$@" >/dev/null 2>&1; then
+        printf '%b[ok]%b   %s\n' "$green" "$reset" "$label"
+        return 0
+    fi
+    printf '%b[wait]%b %s\n' "$yellow" "$reset" "$label"
+    return 1
+}
+
+show_version() {
+    if [ -r /etc/os-release ]; then
+        . /etc/os-release
+        printf '%s\n' "${PRETTY_NAME:-Guitar Hero Linux}"
+        printf 'release: %s\nbuild: %s\nshell: %s\n' \
+            "${VERSION_ID:-unknown}" "${BUILD_ID:-unknown}" "${GHL_SHELL:-unknown}"
+    else
+        cat /etc/ghl-release 2>/dev/null || printf 'Guitar Hero Linux\n'
+    fi
+}
+
+doctor() {
+    heading 'system check'
+    failed=0
+    check 'DRM display device' sh -c 'ls /dev/dri/card* >/dev/null 2>&1' || failed=1
+    check 'ALSA audio device' test -d /dev/snd || failed=1
+    check 'input devices' sh -c 'ls /dev/input/event* >/dev/null 2>&1' || failed=1
+    check 'network address' sh -c "ip -4 addr show 2>/dev/null | grep -q 'inet '" || failed=1
+    check 'Backstage game shell' test -x /usr/bin/backstage-ui || failed=1
+    if command -v clonehero >/dev/null 2>&1; then
+        check 'Clone Hero payload' clonehero status || failed=1
+    else
+        printf '%b[wait]%b Clone Hero launcher\n' "$yellow" "$reset"
+        failed=1
+    fi
+    printf '\n'
+    df -h / 2>/dev/null | sed -n '1,2p'
+    return "$failed"
+}
+
+show_status() {
+    show_version
+    printf '\n'
+    uptime 2>/dev/null || true
+    clonehero status 2>/dev/null || true
+    printf '\nUseful commands: backstage, clonehero, installer, ampkg, ghl doctor\n'
+}
+
+show_logs() {
+    heading 'session logs'
+    found=0
+    for log in /var/log/backstage-gamescope.log /var/log/backstage-xorg.log \
+               /var/log/clonehero-session.log /var/log/clonehero-player.log \
+               /var/log/ghl-desktop-xorg.log; do
+        [ -f "$log" ] || continue
+        found=1
+        printf '\n== %s ==\n' "$log"
+        tail -n 20 "$log"
+    done
+    [ "$found" -eq 1 ] || printf 'No graphical session logs yet.\n'
+}
+
+usage() {
+    cat <<'EOF'
+usage: ghl <command>
+
+  status       show release, uptime and game status
+  doctor       check display, audio, input, network and game
+  play         launch Clone Hero
+  backstage    launch the controller-first game shell
+  desktop      launch Desktop Mode
+  installer    install GHL to a disk
+  logs         show recent graphical-session diagnostics
+  version      print release information
+  help         show this help
+EOF
+}
+
+case "${1:-status}" in
+    status) show_status ;;
+    doctor|check) doctor ;;
+    play) exec clonehero run ;;
+    backstage|menu) exec backstage ;;
+    desktop) exec ghl-desktop ;;
+    installer|install) exec installer ;;
+    logs) show_logs ;;
+    version|--version|-v) show_version ;;
+    help|--help|-h) usage ;;
+    *) printf 'ghl: unknown command: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
+esac

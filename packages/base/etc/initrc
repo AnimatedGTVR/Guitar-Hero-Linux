@@ -1,0 +1,18 @@
+# GHL one-shot system setup, run by init before the shell.
+#
+# Add services here as GHL grows. Keep it POSIX sh.
+
+# Keep the interactive framebuffer readable. The full kernel log remains
+# available through `dmesg`; only warnings and errors continue onto tty1.
+dmesg -n 4 2>/dev/null || true
+
+echo "GHL initrc: bringing up loopback"
+ifconfig lo 127.0.0.1 up
+
+echo "GHL initrc: DHCP on eth0"
+ifconfig eth0 up 2>/dev/null || true
+if udhcpc -i eth0 -q -n 2>/dev/null; then
+    echo "GHL initrc: got a lease: $(ifconfig eth0 | grep inet)"
+else
+    echo "GHL initrc: no network, continuing anyway"
+fi

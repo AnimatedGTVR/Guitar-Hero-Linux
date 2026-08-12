@@ -1,0 +1,464 @@
+#!/bin/sh
+set -u
+
+AMPKG_REPO=${AMPKG_REPO:-/usr/share/ampkg/repo}
+LOG=/var/log/ghl-installer.log
+TARGET_DEFAULT=/mnt/ghl
+SELECTED=1
+PROFILE=game
+TARGET=
+
+ESC='\033'
+RESET='\033[0m'
+BOLD='\033[1m'
+DIM='\033[2m'
+ACID='\033[38;5;190m'
+PAPER='\033[38;5;230m'
+CORAL='\033[38;5;204m'
+GREEN='\033[38;5;84m'
+
+clear_screen() { printf '\033[2J\033[H'; }
+
+header() {
+    clear_screen
+    printf '%b  GHL / INSTALLER%b\n' "$BOLD$ACID" "$RESET"
+    if [ "${GHL_FIRST_BOOT:-0}" = 1 ]; then
+        printf '%b  FIRST BOOT · set up GHL, or choose Exit to continue to Backstage%b\n' "$DIM" "$RESET"
+    else
+        printf '%b  Encore 0.1 · safe target installer%b\n' "$DIM" "$RESET"
+    fi
+    printf '  --------------------------------------------------------------------------\n'
+}
+
+footer() {
+    printf '\n  %bUP/DOWN%b move    %bENTER%b select    %bQ%b back\n' "$DIM" "$RESET" "$DIM" "$RESET" "$DIM" "$RESET"
+}
+
+pause() {
+    printf '\n  Press enter to return...'
+    IFS= read -r _
+}
+
+prompt() {
+    label=$1
+    fallback=${2:-}
+    printf '  %s' "$label"
+    [ -n "$fallback" ] && printf ' [%s]' "$fallback"
+    printf ': '
+    IFS= read -r ANSWER
+    ANSWER=${ANSWER:-$fallback}
+}
+
+item_at() {
+    wanted=$1
+    shift
+    index=1
+    ITEM=
+    for value do
+        if [ "$index" -eq "$wanted" ]; then ITEM=$value; return; fi
+        index=$((index + 1))
+    done
+}
+
+# Arrow-key menu with a numbered fallback for serial consoles and test runs.
+choose() {
+    title=$1
+    subtitle=$2
+    shift 2
+    count=$#
+    selected=1
+
+    if [ "${INSTALLER_PLAIN:-0}" = 1 ] || [ ! -t 0 ]; then
+        header
+        printf '\n  %b%s%b\n  %b%s%b\n\n' "$BOLD" "$title" "$RESET" "$DIM" "$subtitle" "$RESET"
+        index=1
+        for value do printf '  %d. %s\n' "$index" "$value"; index=$((index + 1)); done
+        printf '\n  Select [1-%s, q]: ' "$count"
+        IFS= read -r key
+        case "$key" in q|Q|'') SELECTED=0 ;; *) SELECTED=$key ;; esac
+        return
+    fi
+
+    saved_tty=$(stty -g </dev/tty)
+    stty -echo -icanon min 1 time 0 </dev/tty
+    while :; do
+        header
+        printf '\n  %b%s%b\n  %b%s%b\n\n' "$BOLD" "$title" "$RESET" "$DIM" "$subtitle" "$RESET"
+        index=1
+        for value do
+            if [ "$index" -eq "$selected" ]; then
+                printf '  %b > %-66s %b\n' "$BOLD$ACID" "$value" "$RESET"
+            else
+                printf '    %-66s\n' "$value"
+            fi
+            index=$((index + 1))
+        done
+        footer
+        key=$(dd if=/dev/tty bs=1 count=1 2>/dev/null || true)
+        if [ "$key" = "$ESC" ]; then
+            tail=$(dd if=/dev/tty bs=1 count=2 2>/dev/null || true)
+            case "$tail" in
+                '[A') selected=$((selected - 1)); [ "$selected" -lt 1 ] && selected=$count ;;
+                '[B') selected=$((selected + 1)); [ "$selected" -gt "$count" ] && selected=1 ;;
+            esac
+        else
+            case "$key" in
+                k|K) selected=$((selected - 1)); [ "$selected" -lt 1 ] && selected=$count ;;
+                j|J) selected=$((selected + 1)); [ "$selected" -gt "$count" ] && selected=1 ;;
+                q|Q) selected=0; break ;;
+                '') break ;;
+                [1-9]) [ "$key" -le "$count" ] 2>/dev/null && { selected=$key; break; } ;;
+            esac
+        fi
+    done
+    stty "$saved_tty" </dev/tty
+    SELECTED=$selected
+}
+
+status_line() {
+    state=$1
+    shift
+    case "$state" in
+        ok) printf '  %b[ ok ]%b %s\n' "$GREEN" "$RESET" "$*" ;;
+        run) printf '  %b[....]%b %s\n' "$ACID" "$RESET" "$*" ;;
+        fail) printf '  %b[FAIL]%b %s\n' "$CORAL" "$RESET" "$*" ;;
+        *) printf '  [ -- ] %s\n' "$*" ;;
+    esac
+}
+
+run_logged() {
+    label=$1
+    shift
+    status_line run "$label"
+    printf '\n== %s ==\n' "$label" >>"$LOG"
+    if "$@" >>"$LOG" 2>&1; then
+        status_line ok "$label"
+        return 0
+    fi
+    status_line fail "$label"
+    return 1
+}
+
+mounted_source() {
+    awk -v target="$1" '$2 == target { print $1; exit }' /proc/mounts
+}
+
+validate_target() {
+    target=$1
+    case "$target" in
+        ''|/|/bin|/boot|/dev|/etc|/home|/proc|/root|/run|/sys|/usr|/var)
+            printf '  Refusing unsafe target: %s\n' "$target"
+            return 1
+            ;;
+    esac
+    if [ -z "$(mounted_source "$target")" ]; then
+        printf '  %s is not a separate mounted filesystem.\n' "$target"
+        printf '  Use "Prepare a partition" first, or mount it manually.\n'
+        return 1
+    fi
+    [ -w "$target" ] || { printf '  Target is not writable: %s\n' "$target"; return 1; }
+    return 0
+}
+
+write_target_config() {
+    target=$1
+    source=$(mounted_source "$target")
+    uuid=$(blkid "$source" 2>/dev/null | sed -n 's/.*UUID="\([^"]*\)".*/\1/p')
+    if [ -n "$uuid" ]; then root_arg="UUID=$uuid"; else root_arg=$source; fi
+
+    mkdir -p "$target/etc" "$target/boot/grub"
+    {
+        printf '# generated by GHL installer\n'
+        printf '%s / ext4 defaults,noatime 0 1\n' "$root_arg"
+    } >"$target/etc/fstab"
+    {
+        printf 'set timeout=2\nset default=0\n'
+        printf "menuentry 'Guitar Hero Linux 0.1 Encore' {\n"
+        printf '    linux /boot/bzImage root=%s rdinit=/init rw\n' "$root_arg"
+        printf '    initrd /boot/initramfs.cpio.gz\n}\n'
+    } >"$target/boot/grub/grub.cfg"
+    printf '%s\n' "$root_arg" >"$target/etc/ghl-root"
+}
+
+install_bootloader() {
+    target=$1
+    choose 'MAKE IT BOOTABLE' 'Choose the firmware used by the target computer.' \
+        'Legacy BIOS — write GRUB to a whole disk MBR' \
+        'UEFI — install removable GRUB to a mounted FAT32 ESP' \
+        'Configuration only — do not write firmware boot files'
+    case "$SELECTED" in
+        1)
+            header
+            printf '\n  %bLEGACY BIOS BOOTLOADER%b\n\n' "$BOLD" "$RESET"
+            lsblk 2>/dev/null || true
+            printf '\n'
+            prompt 'Whole disk (example /dev/vdb, not /dev/vdb1)' ''
+            boot_disk=$ANSWER
+            [ -b "$boot_disk" ] || { printf '  Not a block device: %s\n' "$boot_disk"; pause; return 1; }
+            prompt "Type INSTALL BOOTLOADER $boot_disk" ''
+            [ "$ANSWER" = "INSTALL BOOTLOADER $boot_disk" ] || { printf '  Bootloader skipped.\n'; pause; return 0; }
+            header
+            printf '\n'
+            run_logged "Install BIOS GRUB on $boot_disk" \
+                grub-install --target=i386-pc --boot-directory="$target/boot" --recheck "$boot_disk"
+            ;;
+        2)
+            header
+            printf '\n  %bUEFI BOOTLOADER%b\n\n' "$BOLD" "$RESET"
+            printf '  The EFI System Partition must be FAT32 and mounted separately.\n\n'
+            prompt 'Mounted EFI partition' '/mnt/ghl-efi'
+            esp=$ANSWER
+            esp_source=$(mounted_source "$esp")
+            [ -n "$esp_source" ] || { printf '  EFI path is not mounted: %s\n' "$esp"; pause; return 1; }
+            if ! blkid "$esp_source" 2>/dev/null | grep -Eq 'TYPE="(vfat|fat|fat32)"'; then
+                printf '  EFI partition is not FAT32: %s\n' "$esp_source"
+                pause
+                return 1
+            fi
+            prompt "Type INSTALL UEFI $esp_source" ''
+            [ "$ANSWER" = "INSTALL UEFI $esp_source" ] || { printf '  Bootloader skipped.\n'; pause; return 0; }
+            header
+            printf '\n'
+            run_logged "Install removable UEFI GRUB on $esp_source" \
+                grub-install --target=x86_64-efi --efi-directory="$esp" \
+                    --boot-directory="$target/boot" --removable --no-nvram --recheck
+            ;;
+        *)
+            printf '\n  Boot configuration was generated; firmware files were not changed.\n'
+            sleep 1
+            ;;
+    esac
+}
+
+install_target() {
+    target=$1
+    profile=$2
+    mkdir -p /var/log
+    : >"$LOG"
+    header
+    printf '\n  %bINSTALLING%b\n  target  %s\n  profile %s\n\n' "$BOLD" "$RESET" "$target" "$profile"
+
+    run_logged 'Install base system' ampkg -r "$target" -repo "$AMPKG_REPO" install base || return 1
+    if [ "$profile" != console ]; then
+        run_logged 'Install Backstage and game runtime' \
+            ampkg -r "$target" -repo "$AMPKG_REPO" install backstage || return 1
+    fi
+    if [ "$profile" = full ]; then
+        for package in nano btop jq fd git; do
+            run_logged "Install $package" ampkg -r "$target" -repo "$AMPKG_REPO" install "$package" || return 1
+        done
+    fi
+
+    status_line run 'Copy package repository and boot files'
+    mkdir -p "$target/usr/bin" "$target/usr/share/ampkg/repo" "$target/boot"
+    cp /usr/bin/ampkg "$target/usr/bin/ampkg" >>"$LOG" 2>&1 || return 1
+    cp -a "$AMPKG_REPO/." "$target/usr/share/ampkg/repo/" >>"$LOG" 2>&1 || return 1
+    [ -f /boot/bzImage ] && cp /boot/bzImage "$target/boot/bzImage"
+    [ -f /boot/initramfs.cpio.gz ] && cp /boot/initramfs.cpio.gz "$target/boot/initramfs.cpio.gz"
+    write_target_config "$target"
+    status_line ok 'Copy package repository and boot files'
+
+    install_bootloader "$target" || {
+        printf '\n  The system files are installed, but the bootloader step failed.\n'
+        printf '  Review %s and retry the installer.\n' "$LOG"
+        pause
+        return 1
+    }
+
+    if [ "$profile" != console ] && [ -x /opt/clonehero/clonehero ]; then
+        choose 'COPY CLONE HERO?' 'The locally installed payload is about 1.2 GB.' \
+            'Copy the current game payload' 'Leave the game for clonehero install'
+        if [ "$SELECTED" -eq 1 ]; then
+            header
+            printf '\n'
+            run_logged 'Copy Clone Hero payload' sh -c \
+                'mkdir -p "$1/opt/clonehero" "$1/root/Clone Hero/Songs"; cp -a /opt/clonehero/. "$1/opt/clonehero/"' sh "$target" || return 1
+        fi
+    fi
+
+    sync
+    header
+    printf '\n  %bINSTALL COMPLETE%b\n\n' "$BOLD$GREEN" "$RESET"
+    status_line ok "GHL installed at $target"
+    status_line ok 'fstab and GRUB boot configuration generated'
+    status_line ok 'package repository copied locally'
+    printf '\n  Root: %s\n' "$(cat "$target/etc/ghl-root" 2>/dev/null)"
+    printf '  Log:  %s\n\n' "$LOG"
+    printf '  BIOS and UEFI firmware installs are available in the guided flow.\n'
+    pause
+}
+
+install_wizard() {
+    choose 'CHOOSE A PROFILE' 'Nothing is written until the final confirmation.' \
+        'Game system — Backstage, Desktop Mode, Clone Hero launcher' \
+        'Full system — game system plus Git, Nano, btop, jq and fd' \
+        'Console system — shell, network, ampkg and installer only'
+    case "$SELECTED" in 1) PROFILE=game ;; 2) PROFILE=full ;; 3) PROFILE=console ;; *) return ;; esac
+
+    header
+    printf '\n  %bTARGET FILESYSTEM%b\n\n' "$BOLD" "$RESET"
+    printf '  Mounted filesystems:\n'
+    awk '$2 ~ /^\/mnt\// { printf "    %-18s %s\n", $1, $2 }' /proc/mounts
+    printf '\n'
+    prompt 'Mounted target path' "$TARGET_DEFAULT"
+    TARGET=$ANSWER
+    validate_target "$TARGET" || { pause; return; }
+
+    source=$(mounted_source "$TARGET")
+    free_kb=$(df -Pk "$TARGET" | awk 'NR == 2 { print $4 }')
+    header
+    printf '\n  %bREADY TO INSTALL%b\n\n' "$BOLD" "$RESET"
+    printf '  target   %s\n  device   %s\n  profile  %s\n  free     %s KB\n\n' \
+        "$TARGET" "$source" "$PROFILE" "${free_kb:-unknown}"
+    printf '  Existing files under the target may be replaced.\n'
+    prompt "Type $TARGET to confirm" ''
+    [ "$ANSWER" = "$TARGET" ] || { printf '\n  Cancelled.\n'; pause; return; }
+    install_target "$TARGET" "$PROFILE" || {
+        printf '\n  Installation stopped. Last log lines:\n\n'
+        tail -n 12 "$LOG" 2>/dev/null || true
+        pause
+    }
+}
+
+prepare_partition() {
+    choose 'PARTITION TYPE' 'GHL never repartitions a disk automatically.' \
+        'GHL root — format an existing partition as ext4' \
+        'UEFI system partition — format an existing partition as FAT32' \
+        'Cancel'
+    case "$SELECTED" in
+        1) filesystem=root; target_mount=$TARGET_DEFAULT ;;
+        2) filesystem=efi; target_mount=/mnt/ghl-efi ;;
+        *) return ;;
+    esac
+    header
+    printf '\n  %bPREPARE A PARTITION%b\n' "$BOLD$CORAL" "$RESET"
+    printf '  This formats one existing partition. It does not repartition a disk.\n\n'
+    lsblk 2>/dev/null || cat /proc/partitions
+    printf '\n'
+    prompt 'Partition device (example /dev/vdb1)' ''
+    device=$ANSWER
+    case "$device" in /dev/*) ;; *) printf '  Enter a /dev/... partition.\n'; pause; return ;; esac
+    [ -b "$device" ] || { printf '  Not a block device: %s\n' "$device"; pause; return; }
+    root_source=$(mounted_source /)
+    [ "$device" != "$root_source" ] || { printf '  Refusing to erase the running root filesystem.\n'; pause; return; }
+    if awk -v dev="$device" '$1 == dev { found=1 } END { exit !found }' /proc/mounts; then
+        printf '  Refusing mounted device. Unmount it first: %s\n' "$device"
+        pause
+        return
+    fi
+    printf '\n  %bEVERY FILE ON %s WILL BE ERASED.%b\n' "$BOLD$CORAL" "$device" "$RESET"
+    prompt "Type ERASE $device" ''
+    [ "$ANSWER" = "ERASE $device" ] || { printf '  Cancelled.\n'; pause; return; }
+    mkdir -p "$target_mount" /var/log
+    : >"$LOG"
+    header
+    printf '\n'
+    if [ "$filesystem" = root ]; then
+        run_logged "Format $device as GHLROOT" mke2fs -F -L GHLROOT "$device" || { pause; return; }
+    else
+        run_logged "Format $device as GHLEFI" mkfs.fat -F 32 -n GHLEFI "$device" || { pause; return; }
+    fi
+    run_logged "Mount $device" mount "$device" "$target_mount" || { pause; return; }
+    printf '\n  Ready at %s.\n' "$target_mount"
+    [ "$filesystem" = root ] && printf '  Choose Install GHL and use this target.\n'
+    pause
+}
+
+verify_target() {
+    header
+    printf '\n'
+    prompt 'Installed target [/ for this system]' '/'
+    target=$ANSWER
+    failed=0
+    header
+    printf '\n  %bVERIFY %s%b\n\n' "$BOLD" "$target" "$RESET"
+    for path in etc/os-release sbin/init usr/bin/ampkg bin/sh; do
+        if [ -e "$target/$path" ]; then status_line ok "$path"; else status_line fail "$path"; failed=1; fi
+    done
+    if [ -x "$target/usr/bin/backstage" ]; then status_line ok 'Backstage profile'; else status_line skip 'console profile / Backstage absent'; fi
+    if [ -f "$target/boot/bzImage" ]; then status_line ok 'kernel image'; else status_line fail 'kernel image'; failed=1; fi
+    if [ -f "$target/boot/initramfs.cpio.gz" ]; then status_line ok 'initramfs'; else status_line fail 'initramfs'; failed=1; fi
+    printf '\n'
+    if [ "$failed" -eq 0 ]; then
+        printf '  %bTarget looks complete.%b\n' "$GREEN" "$RESET"
+    else
+        printf '  %bTarget needs repair or missing boot files.%b\n' "$CORAL" "$RESET"
+    fi
+    pause
+}
+
+packages_menu() {
+    while :; do
+        choose 'PACKAGES' 'Manage the running GHL system.' \
+            'List installed packages' 'Search repository' 'Install a package' \
+            'Remove a package' 'Update repository index' 'Upgrade installed packages' 'Back'
+        case "$SELECTED" in
+            1) header; ampkg list; pause ;;
+            2) header; prompt 'Search term' ''; ampkg search "$ANSWER"; pause ;;
+            3) header; prompt 'Package name' ''; [ -n "$ANSWER" ] && ampkg install "$ANSWER"; pause ;;
+            4) header; prompt 'Package name' ''; [ -n "$ANSWER" ] && ampkg remove "$ANSWER"; pause ;;
+            5) header; ampkg update; pause ;;
+            6) header; ampkg upgrade; pause ;;
+            *) return ;;
+        esac
+    done
+}
+
+machine_check() {
+    header
+    printf '\n  %bMACHINE CHECK%b\n\n' "$BOLD" "$RESET"
+    if command -v ghl >/dev/null 2>&1; then ghl doctor; else fastfetch; fi
+    pause
+}
+
+network_status() {
+    header
+    printf '\n  %bNETWORK%b\n\n' "$BOLD" "$RESET"
+    ip addr 2>/dev/null || ifconfig -a
+    printf '\n'
+    ip route 2>/dev/null || route -n
+    pause
+}
+
+about() {
+    header
+    printf '\n  %bINSTALLER 0.2 / FIRST SET%b\n\n' "$BOLD" "$RESET"
+    printf '  Installs GHL package profiles onto an explicitly mounted target.\n'
+    printf '  It can format an existing partition, but never chooses or erases one\n'
+    printf '  without the full device name being typed back.\n\n'
+    printf '  Installation log: %s\n' "$LOG"
+    printf '  Package source:   %s\n' "$AMPKG_REPO"
+    pause
+}
+
+[ "$(id -u)" = 0 ] || { echo 'installer: must run as root' >&2; exit 1; }
+mkdir -p /var/log
+
+while :; do
+    if [ "${GHL_FIRST_BOOT:-0}" = 1 ]; then
+        menu_subtitle='Welcome to GHL. Nothing destructive happens from this screen.'
+        exit_label='Exit to Backstage / terminal (finish first boot)'
+    else
+        menu_subtitle='Nothing destructive happens from this screen.'
+        exit_label='Exit to Backstage / terminal'
+    fi
+    choose 'WHAT ARE WE DOING?' "$menu_subtitle" \
+        'Install GHL to a mounted target' \
+        'Prepare an existing root or UEFI partition' \
+        'Verify an installed system' \
+        'Manage packages' \
+        'Check this machine' \
+        'Show network status' \
+        'About this installer' \
+        "$exit_label"
+    case "$SELECTED" in
+        1) install_wizard ;;
+        2) prepare_partition ;;
+        3) verify_target ;;
+        4) packages_menu ;;
+        5) machine_check ;;
+        6) network_status ;;
+        7) about ;;
+        8|0) clear_screen; exit 0 ;;
+    esac
+done

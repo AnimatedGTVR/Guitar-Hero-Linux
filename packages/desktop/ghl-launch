@@ -1,0 +1,42 @@
+#!/bin/sh
+set -u
+
+clear_screen() { printf '\033[2J\033[H'; }
+pause() { printf '\nPress enter...'; IFS= read -r _; }
+spawn() { "$@" >/var/log/ghl-launch-last.log 2>&1 & }
+
+draw() {
+    clear_screen
+    printf '\033[1;30;102m  GHL / DESK  \033[0m\n'
+    printf '\033[2m  Desktop Mode · Encore 0.1\033[0m\n\n'
+    printf '  \033[1m1\033[0m  TERMINAL       another root shell\n'
+    printf '  \033[1m2\033[0m  SONG FILES     browse /root/Clone Hero/Songs\n'
+    printf '  \033[1m3\033[0m  TEXT EDITOR    open Nano\n'
+    printf '  \033[1m4\033[0m  SYSTEM MONITOR open btop\n'
+    printf '  \033[1m5\033[0m  MACHINE CHECK  run ghl doctor\n'
+    printf '  \033[1m6\033[0m  INSTALLER      install or repair GHL\n'
+    printf '  \033[1m7\033[0m  BACKSTAGE      leave Desktop Mode\n\n'
+    printf '  \033[2mAlt+P launcher   Alt+Shift+Enter terminal\n'
+    printf '  Alt+1..4 desk  Alt+Esc Backstage\033[0m\n\n'
+    printf '  Choose 1–7, or q to close this window: '
+}
+
+while :; do
+    draw
+    IFS= read -r choice
+    case "$choice" in
+        1) spawn st -t "GHL / TERMINAL" ;;
+        2)
+            mkdir -p "/root/Clone Hero/Songs"
+            spawn st -t "GHL / SONG FILES" -e sh -c \
+                'cd "/root/Clone Hero/Songs"; clear; printf "SONG FILES  %s\\n\\n" "$PWD"; ls -la; printf "\\nThis is a normal shell. Type exit when done.\\n"; exec sh'
+            ;;
+        3) spawn st -t "GHL / NANO" -e nano ;;
+        4) spawn st -t "GHL / MONITOR" -e btop ;;
+        5) spawn st -t "GHL / MACHINE CHECK" -e sh -c 'ghl doctor; printf "\\n"; read -r _' ;;
+        6) spawn st -t "GHL / INSTALLER" -g 90x30 -e installer ;;
+        7) killall dwm 2>/dev/null || true; exit 0 ;;
+        q|Q|'') exit 0 ;;
+        *) printf '\nNo item %s.' "$choice"; pause ;;
+    esac
+done

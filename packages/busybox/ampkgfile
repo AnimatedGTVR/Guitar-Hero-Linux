@@ -1,12 +1,13 @@
 pkgname = busybox
 pkgver = 1.38.0
-pkgrel = 1
+pkgrel = 4
 pkgdesc = "GHL base userspace (busybox)"
 files = (
     build/out/busybox  usr/bin/busybox
 )
 links = (
     busybox  usr/bin/sh
+    ../usr/bin/sh  bin/sh
     busybox  usr/bin/ls
     busybox  usr/bin/cat
     busybox  usr/bin/echo
@@ -20,6 +21,7 @@ links = (
     busybox  usr/bin/sleep
     busybox  usr/bin/ps
     busybox  usr/bin/kill
+    busybox  usr/bin/killall
     busybox  usr/bin/grep
     busybox  usr/bin/sed
     busybox  usr/bin/awk
@@ -30,6 +32,7 @@ links = (
     busybox  usr/bin/ifconfig
     busybox  usr/bin/udhcpc
     busybox  usr/bin/ping
+    busybox  usr/bin/route
     busybox  usr/bin/telnet
     busybox  usr/bin/halt
     busybox  usr/bin/poweroff
@@ -40,4 +43,51 @@ links = (
     busybox  usr/bin/tar
     busybox  usr/bin/gzip
     busybox  usr/bin/gunzip
+    busybox  usr/bin/find
+    busybox  usr/bin/xargs
+    busybox  usr/bin/head
+    busybox  usr/bin/tail
+    busybox  usr/bin/sort
+    busybox  usr/bin/uniq
+    busybox  usr/bin/cut
+    busybox  usr/bin/tr
+    busybox  usr/bin/env
+    busybox  usr/bin/which
+    busybox  usr/bin/diff
+    busybox  usr/bin/patch
+    busybox  usr/bin/date
+    busybox  usr/bin/df
+    busybox  usr/bin/du
+    busybox  usr/bin/free
+    busybox  usr/bin/uptime
+    busybox  usr/bin/top
+    busybox  usr/bin/chmod
+    busybox  usr/bin/chown
+    busybox  usr/bin/ln
+    busybox  usr/bin/readlink
+    busybox  usr/bin/realpath
+    busybox  usr/bin/dirname
+    busybox  usr/bin/basename
+    busybox  usr/bin/sha256sum
+    busybox  usr/bin/sha1sum
+    busybox  usr/bin/xz
+    busybox  usr/bin/unxz
+    busybox  usr/bin/unzip
+    busybox  usr/bin/nc
+    busybox  usr/bin/ip
+    busybox  usr/bin/su
+    busybox  usr/bin/sync
+    busybox  usr/bin/stty
+    busybox  usr/bin/setfont
+    busybox  usr/bin/loadfont
+    busybox  usr/bin/resize
+    busybox  usr/bin/id
+    busybox  usr/bin/lsblk
+    busybox  usr/bin/blkid
+    busybox  usr/bin/findfs
+    busybox  usr/bin/fdisk
+    busybox  usr/bin/mke2fs
+    busybox  usr/bin/dd
+    busybox  usr/bin/hexdump
+    busybox  usr/bin/wc
 )

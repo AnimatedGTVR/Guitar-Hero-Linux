@@ -1,0 +1,4 @@
+# Root's interactive shell defaults.
+export USER=root LOGNAME=root HOME=/root
+alias ll='ls -lah'
+alias la='ls -A'

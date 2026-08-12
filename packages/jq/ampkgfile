@@ -1,0 +1,10 @@
+pkgname = jq
+pkgver = 1.8.2
+pkgrel = 1
+pkgdesc = "Command-line JSON processor"
+depends = (
+    host-runtime
+)
+files = (
+    build/optional-tools/jq  usr/bin/jq
+)

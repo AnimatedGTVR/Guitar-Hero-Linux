@@ -1,0 +1,12 @@
+pkgname = ghl-installer
+pkgver = 0.2
+pkgrel = 2
+pkgdesc = "Safe keyboard-driven GHL target installer and recovery TUI"
+depends = (
+    busybox
+    fastfetch
+    ghl-bootloader
+)
+files = (
+    packages/ghl-installer/installer  usr/bin/installer
+)

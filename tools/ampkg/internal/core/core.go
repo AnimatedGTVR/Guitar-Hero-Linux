@@ -45,6 +45,17 @@ func (c *Core) Install(names ...string) ([]string, error) {
 	for _, e := range entries {
 		byName[e.Meta.Name] = e
 	}
+	installed, err := db.New(c.cfg.Root).InstalledNames()
+	if err != nil {
+		return nil, err
+	}
+	// Explicit reinstalls are almost certainly a mistake. Installed
+	// dependencies, however, already satisfy the transaction and are skipped.
+	for _, name := range names {
+		if installed[name] {
+			return nil, fmt.Errorf("%s is already installed", name)
+		}
+	}
 
 	// Resolve names + deps into an install plan (deps first).
 	var plan []repo.Entry
@@ -52,6 +63,10 @@ func (c *Core) Install(names ...string) ([]string, error) {
 	var add func(name string) error
 	add = func(name string) error {
 		if seen[name] {
+			return nil
+		}
+		if installed[name] {
+			seen[name] = true
 			return nil
 		}
 		e, ok := byName[name]
@@ -70,17 +85,6 @@ func (c *Core) Install(names ...string) ([]string, error) {
 	for _, n := range names {
 		if err := add(n); err != nil {
 			return nil, err
-		}
-	}
-
-	// Refuse to clobber already-installed packages.
-	installed, err := db.New(c.cfg.Root).InstalledNames()
-	if err != nil {
-		return nil, err
-	}
-	for _, e := range plan {
-		if installed[e.Meta.Name] {
-			return nil, fmt.Errorf("%s is already installed", e.Meta.Name)
 		}
 	}
 

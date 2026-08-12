@@ -1,0 +1,18 @@
+pkgname = desktop
+pkgver = 0.1
+pkgrel = 4
+pkgdesc = "GHL Desktop Mode window manager, launcher, terminal, and system tools"
+depends = (
+    ghl-wayland
+    nano
+    btop
+)
+files = (
+    build/out/dwm                     usr/bin/dwm
+    build/out/st                      usr/bin/st
+    build/out/ghl-bg                  usr/bin/ghl-bg
+    packages/desktop/ghl-desktop      usr/bin/ghl-desktop
+    packages/desktop/ghl-launch       usr/bin/ghl-launch
+    packages/desktop/xorg-desktop.conf etc/X11/xorg-desktop.conf
+    desktop/fonts/JetBrainsMono-Medium.ttf usr/share/fonts/JetBrainsMono-Medium.ttf
+)

@@ -1,0 +1,7 @@
+pkgname = ghl-init
+pkgver = 0.2
+pkgrel = 2
+pkgdesc = "GHL init (static, pid 1) and pivot-to-real-root bootstrap"
+files = (
+    build/out/init  sbin/init
+)

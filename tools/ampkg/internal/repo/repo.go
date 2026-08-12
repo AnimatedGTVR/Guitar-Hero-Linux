@@ -24,7 +24,9 @@ type Entry struct {
 
 // Read parses an index file. Each line is:
 //
-//	name|version|archive-file|dep1 dep2 ...
+//	name|version|archive-file|dep1 dep2 ...|description
+//
+// Older four-field indexes remain readable.
 func Read(path string) ([]Entry, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -39,7 +41,7 @@ func Read(path string) ([]Entry, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		parts := strings.SplitN(line, "|", 4)
+		parts := strings.SplitN(line, "|", 5)
 		if len(parts) < 3 {
 			continue
 		}
@@ -53,6 +55,12 @@ func Read(path string) ([]Entry, error) {
 		if len(parts) == 4 && parts[3] != "" {
 			e.Meta.Deps = strings.Fields(parts[3])
 		}
+		if len(parts) == 5 {
+			if parts[3] != "" {
+				e.Meta.Deps = strings.Fields(parts[3])
+			}
+			e.Meta.Desc = parts[4]
+		}
 		entries = append(entries, e)
 	}
 	return entries, sc.Err()
@@ -64,8 +72,9 @@ func Write(path string, entries []Entry) error {
 	var b strings.Builder
 	b.WriteString("# GHL repo index\n")
 	for _, e := range entries {
-		fmt.Fprintf(&b, "%s|%s|%s|%s\n",
-			e.Meta.Name, e.Meta.Version, e.File, strings.Join(e.Meta.Deps, " "))
+		desc := strings.NewReplacer("|", " ", "\n", " ", "\r", " ").Replace(e.Meta.Desc)
+		fmt.Fprintf(&b, "%s|%s|%s|%s|%s\n",
+			e.Meta.Name, e.Meta.Version, e.File, strings.Join(e.Meta.Deps, " "), desc)
 	}
 	return os.WriteFile(path, []byte(b.String()), 0644)
 }

@@ -1,0 +1,10 @@
+pkgname = ghl-bootloader
+pkgver = 2.14
+pkgrel = 1
+pkgdesc = "GRUB BIOS/UEFI installation tools for the GHL installer"
+depends = (
+    host-runtime
+)
+files = (
+    build/grub-root  /
+)

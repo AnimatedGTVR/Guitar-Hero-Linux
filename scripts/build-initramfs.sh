@@ -27,7 +27,7 @@ for a in sh ls cat echo mount umount cp mv rm mkdir rmdir pwd chmod chown \
          sleep ps kill grep sed awk touch head tail wc find dd true false \
          dmesg clear halt poweroff reboot uname printf test hostname free \
          df du which env sort cut tr xargs ln tar gzip gunzip bzcat zcat \
-         ping wget ifconfig udhcpc telnet su login vi nice taskset \
+         ping wget ifconfig udhcpc telnet su login vi nice taskset findfs blkid \
          uuencode uudecode dnsdomainname ftpget; do
     ln -s busybox "$STAGE/bin/$a"
 done

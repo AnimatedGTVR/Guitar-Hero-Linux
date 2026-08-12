@@ -1,0 +1,85 @@
+#!/bin/sh
+set -eu
+
+# The desktop session: a minimal Xorg + dwm + st, reached from Backstage's
+# SYSTEM > DESKTOP MODE item. Only ever launched after backstage-session has
+# fully torn its own gamescope/Xorg session down (see the handoff at the end
+# of that script), so it's safe to claim the DRM device here.
+
+# See packages/backstage/backstage-session: this virtio-gpu/Mesa
+# combination's hardware GL path is unstable, so force software GL here too.
+export LIBGL_ALWAYS_SOFTWARE=1
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/0}
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 0700 "$XDG_RUNTIME_DIR"
+
+seatd -g root &
+SEATD_PID=$!
+trap 'kill "$SEATD_PID" 2>/dev/null || true' EXIT INT TERM
+sleep 1
+export LIBSEAT_BACKEND=seatd
+
+mkdir -p /var/lib/xkb /tmp/.X11-unix /var/log
+chmod 1777 /tmp /var/lib/xkb /tmp/.X11-unix
+
+XORG_CONFIG=/run/ghl-desktop-xorg.conf
+cp /etc/X11/xorg-desktop.conf "$XORG_CONFIG"
+{
+    printf '\nSection "ServerLayout"\n'
+    printf '    Identifier "GHL Desktop Layout"\n'
+    printf '    Screen 0 "GHL Screen"\n'
+    input_number=0
+    for input_device in /dev/input/event*; do
+        [ -e "$input_device" ] || continue
+        printf '    InputDevice "GHL Input %s" "SendCoreEvents"\n' "$input_number"
+        input_number=$((input_number + 1))
+    done
+    printf 'EndSection\n'
+
+    input_number=0
+    for input_device in /dev/input/event*; do
+        [ -e "$input_device" ] || continue
+        printf '\nSection "InputDevice"\n'
+        printf '    Identifier "GHL Input %s"\n' "$input_number"
+        printf '    Driver "evdev"\n'
+        printf '    Option "Device" "%s"\n' "$input_device"
+        printf 'EndSection\n'
+        input_number=$((input_number + 1))
+    done
+} >>"$XORG_CONFIG"
+
+Xorg :1 vt1 -config "$XORG_CONFIG" -keeptty -noreset -nolisten tcp >/var/log/ghl-desktop-xorg.log 2>&1 &
+XORG_PID=$!
+attempt=0
+while [ "$attempt" -lt 100 ]; do
+    [ -S /tmp/.X11-unix/X1 ] && break
+    kill -0 "$XORG_PID" 2>/dev/null || break
+    sleep 0.1
+    attempt=$((attempt + 1))
+done
+
+if [ ! -S /tmp/.X11-unix/X1 ]; then
+    printf '\033[1;31mghl-desktop: Xorg failed to start. See /var/log/ghl-desktop-xorg.log\033[0m\n'
+    kill "$SEATD_PID" 2>/dev/null || true
+    exit 1
+fi
+
+export DISPLAY=:1
+ghl-bg >/var/log/ghl-desktop-bg.log 2>&1 &
+BG_PID=$!
+dwm >/var/log/ghl-desktop-dwm.log 2>&1 &
+DWM_PID=$!
+sleep 0.4
+st -n ghl-launcher -t "GHL / DESK" -g 72x26 -e ghl-launch >/var/log/ghl-launch.log 2>&1 &
+LAUNCH_PID=$!
+
+# Desktop Mode belongs to dwm, not to whichever terminal happened to open
+# first. Closing the launcher leaves a usable desktop; Alt+P brings it back.
+wait "$DWM_PID" 2>/dev/null || true
+kill "$LAUNCH_PID" "$BG_PID" 2>/dev/null || true
+wait "$DWM_PID" 2>/dev/null || true
+kill "$XORG_PID" 2>/dev/null || true
+wait "$XORG_PID" 2>/dev/null || true
+kill "$SEATD_PID" 2>/dev/null || true
+wait "$SEATD_PID" 2>/dev/null || true
+trap - EXIT INT TERM

@@ -1,0 +1,10 @@
+pkgname = curl
+pkgver = 8.21.0
+pkgrel = 1
+pkgdesc = "Command-line URL transfer tool with HTTPS support"
+depends = (
+    host-runtime
+)
+files = (
+    build/optional-tools/curl  usr/bin/curl
+)

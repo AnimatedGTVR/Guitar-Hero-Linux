@@ -1,0 +1,10 @@
+pkgname = fd
+pkgver = 10.4.2
+pkgrel = 1
+pkgdesc = "Fast and friendly file finder"
+depends = (
+    host-runtime
+)
+files = (
+    build/optional-tools/fd  usr/bin/fd
+)

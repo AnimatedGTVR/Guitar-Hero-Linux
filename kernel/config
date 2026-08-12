@@ -5,18 +5,24 @@
 #
 # Only turn on what the guitar needs: boot from initramfs, a serial + VT
 # console, USB input (the guitar controller), virtio (dev/test in QEMU),
-# a network stack (song downloads), and a couple of filesystems for the
-# future on-disk root.
+# a network stack (song downloads), and the filesystems for the on-disk root.
+#
+# Gotcha: tinyconfig turns off whole Kconfig menus (VIRTIO_MENU, MISC_
+# FILESYSTEMS, BLOCK...), so toggles inside those menus get silently dropped
+# by olddefconfig unless the menu itself is enabled here too.
 
 # --- architecture ---
 # tinyconfig/allnoconfig defaults to a 32-bit x86 kernel. Without this the
 # kernel is CONFIG_X86_32 and rejects every 64-bit binary with ENOEXEC.
 CONFIG_64BIT=y
+CONFIG_SMP=y
+CONFIG_NR_CPUS=8
 
 # --- boot ---
 CONFIG_BLK_DEV_INITRD=y
 CONFIG_RD_GZIP=y
 CONFIG_BINFMT_ELF=y
+CONFIG_BINFMT_SCRIPT=y
 CONFIG_ACPI=y
 CONFIG_EFI=y
 CONFIG_EFI_STUB=y
@@ -39,8 +45,12 @@ CONFIG_TMPFS=y
 CONFIG_DEVTMPFS=y
 CONFIG_DEVTMPFS_MOUNT=y
 
-# --- real filesystems (future on-disk root) ---
+# --- real filesystems (on-disk root, ext4) ---
+# The block layer underpins every real disk/filesystem; without it
+# EXT4, SQUASHFS and VIRTIO_BLK are silently dropped by olddefconfig.
+CONFIG_BLOCK=y
 CONFIG_EXT4_FS=y
+CONFIG_MISC_FILESYSTEMS=y
 CONFIG_SQUASHFS=y
 
 # --- network ---
@@ -48,8 +58,14 @@ CONFIG_NET=y
 CONFIG_PACKET=y
 CONFIG_UNIX=y
 CONFIG_INET=y
+CONFIG_NETDEVICES=y
+CONFIG_VIRTIO_NET=y
 
 # --- virtio (QEMU) ---
+# PCI is required: virtio-pci sits on the PCI bus (the root disk too).
+# VIRTIO_MENU must be on or olddefconfig silently drops every VIRTIO_* entry.
+CONFIG_PCI=y
+CONFIG_VIRTIO_MENU=y
 CONFIG_VIRTIO=y
 CONFIG_VIRTIO_PCI=y
 CONFIG_VIRTIO_MMIO=y
@@ -61,12 +77,60 @@ CONFIG_VIRTIO_CONSOLE=y
 CONFIG_INPUT=y
 CONFIG_INPUT_EVDEV=y
 CONFIG_INPUT_KEYBOARD=y
+CONFIG_INPUT_JOYSTICK=y
+CONFIG_JOYSTICK_XPAD=y
 CONFIG_HID=y
 CONFIG_HID_GENERIC=y
+CONFIG_NEW_LEDS=y
+CONFIG_LEDS_CLASS=y
+CONFIG_LEDS_CLASS_MULTICOLOR=y
+CONFIG_POWER_SUPPLY=y
+CONFIG_HID_SONY=y
+CONFIG_HID_PLAYSTATION=y
+# virtio-input: lets the QEMU window receive the guest keyboard/mouse so the
+# root terminal can be driven from the display instead of the serial console.
+CONFIG_VIRTIO_INPUT=y
+CONFIG_USB_SUPPORT=y
 CONFIG_USB=y
 CONFIG_USB_XHCI_HCD=y
 CONFIG_USB_HID=y
 
-# --- display (eventual framebuffer for Clone Hero) ---
+# --- audio (Clone Hero output + USB instruments/interfaces) ---
+CONFIG_SOUND=y
+CONFIG_SND=y
+CONFIG_SND_PCM=y
+CONFIG_SND_TIMER=y
+CONFIG_SND_HDA=y
+CONFIG_SND_HDA_INTEL=y
+CONFIG_SND_HDA_CODEC_HDMI=y
+CONFIG_SND_HDA_GENERIC=y
+CONFIG_SND_USB_AUDIO=y
+
+# --- Go runtime (ampkg is a static Go binary) ---
+# tinyconfig leaves these off; Go's runtime needs futex for sync and
+# epoll/eventfd for its netpoller, or the binary crashes with SIGSEGV.
+# Xorg also forks helpers after resetting their credentials. MULTIUSER keeps
+# the setuid/setgid syscall family available; without it those calls return
+# ENOSYS and Xorg aborts before it can launch xkbcomp.
+CONFIG_MULTIUSER=y
+CONFIG_FUTEX=y
+CONFIG_EPOLL=y
+CONFIG_EVENTFD=y
+CONFIG_SIGNALFD=y
+CONFIG_TIMERFD=y
+CONFIG_RSEQ=y
+# Unity reserves large virtual allocator arenas and commits pieces of them with
+# madvise(). tinyconfig removes the syscall entirely; Unity does not handle the
+# resulting ENOSYS and crashes in UnityPlayer.so before it can create a log.
+CONFIG_ADVISE_SYSCALLS=y
+
+# --- display (framebuffer for Clone Hero, eventually) ---
+# virtio-gpu in QEMU provides /dev/fb0 (via fbdev emulation) and a
+# framebuffer console. DRM_VIRTIO_GPU needs VIRTIO_MENU (already on).
+CONFIG_DRM=y
+CONFIG_DRM_VIRTIO_GPU=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER=y
 CONFIG_FB=y
 CONFIG_FB_EFI=y

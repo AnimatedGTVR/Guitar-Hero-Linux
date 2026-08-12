@@ -112,6 +112,16 @@ func copyTree(src, dst string) error {
 		if info.IsDir() {
 			return os.MkdirAll(target, info.Mode().Perm())
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			return os.Symlink(link, target)
+		}
 		return copyFile(path, target, info.Mode())
 	})
 }

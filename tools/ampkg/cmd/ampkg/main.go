@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"ghl/ampkg/internal/builder"
 	"ghl/ampkg/internal/core"
 	"ghl/ampkg/internal/repo"
-	"ghl/ampkg/internal/tui"
 )
 
 const usageText = `ampkg — GHL package manager
 
 usage:
-  ampkg                     interactive TUI
+  ampkg                     show this help
   ampkg build <recipe>...   build .ampkg packages from recipes
   ampkg repo-add <dir>      (re)build the repo index in <dir>
   ampkg install <pkg>...    install packages and their dependencies
@@ -61,21 +62,13 @@ func env(name, def string) string {
 
 func main() {
 	if len(os.Args) < 2 {
-		cfg := core.Config{Root: env("AMPKG_ROOT", "/"), RepoDir: env("AMPKG_REPO", "./repo")}
-		if err := tui.Run(&cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "ampkg: %v\n", err)
-			os.Exit(1)
-		}
+		fmt.Print(usageText)
 		return
 	}
 
 	vals, args := splitFlags(os.Args[1:], map[string]bool{"r": true, "repo": true, "o": true, "src": true})
 	if len(args) == 0 {
-		cfg := core.Config{Root: orDefault(vals, "r", env("AMPKG_ROOT", "/")), RepoDir: orDefault(vals, "repo", env("AMPKG_REPO", "./repo"))}
-		if err := tui.Run(&cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "ampkg: %v\n", err)
-			os.Exit(1)
-		}
+		fmt.Print(usageText)
 		return
 	}
 	cmd, rest := args[0], args[1:]
@@ -112,6 +105,41 @@ func run(err error) {
 		fmt.Fprintf(os.Stderr, "ampkg: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// animate runs a transaction behind a small fret-board animation. Output
+// stays plain when redirected, making ampkg safe for scripts and build logs.
+func animate(label string, fn func() error) error {
+	info, _ := os.Stdout.Stat()
+	interactive := info != nil && info.Mode()&os.ModeCharDevice != 0 && os.Getenv("AMPKG_NO_ANIMATION") == ""
+	if !interactive {
+		return fn()
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	frames := []string{"[o----]", "[-o---]", "[--o--]", "[---o-]", "[----o]", "[---o-]", "[--o--]", "[-o---]"}
+	ticker := time.NewTicker(70 * time.Millisecond)
+	defer ticker.Stop()
+	started, frame := time.Now(), 0
+	finished := false
+	var result error
+	fmt.Print("\033[?25l")
+	defer fmt.Print("\033[?25h")
+	for !finished || time.Since(started) < 420*time.Millisecond {
+		fmt.Printf("\r\033[1;36m%s\033[0m  %s", frames[frame%len(frames)], label)
+		frame++
+		select {
+		case result = <-done:
+			finished = true
+		case <-ticker.C:
+		}
+	}
+	fmt.Print("\r\033[2K")
+	if result == nil {
+		fmt.Printf("\033[1;32m[done]\033[0m %s\n", label)
+	}
+	return result
 }
 
 func config(vals map[string]string) core.Config {
@@ -168,7 +196,11 @@ func cmdInstall(vals map[string]string, names []string) error {
 		return fmt.Errorf("install: need at least one package name")
 	}
 	c := core.New(config(vals))
-	done, err := c.Install(names...)
+	var done []string
+	err := animate("installing "+strings.Join(names, ", "), func() (err error) {
+		done, err = c.Install(names...)
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -183,7 +215,7 @@ func cmdRemove(vals map[string]string, names []string) error {
 		return fmt.Errorf("remove: need at least one package name")
 	}
 	c := core.New(config(vals))
-	if err := c.Remove(names...); err != nil {
+	if err := animate("removing "+strings.Join(names, ", "), func() error { return c.Remove(names...) }); err != nil {
 		return err
 	}
 	for _, n := range names {
@@ -194,7 +226,11 @@ func cmdRemove(vals map[string]string, names []string) error {
 
 func cmdUpgrade(vals map[string]string) error {
 	c := core.New(config(vals))
-	done, err := c.Upgrade()
+	var done []string
+	err := animate("checking for upgrades", func() (err error) {
+		done, err = c.Upgrade()
+		return err
+	})
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,23 @@
+#!/bin/sh
+# GHL is currently a single-user appliance and its console is already root.
+# Keep common setup scripts that invoke sudo working until user accounts land.
+case "${1:-}" in
+    --version)
+        echo "sudo (GHL root compatibility shim) 0.1"
+        exit 0
+        ;;
+esac
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --) shift; break ;;
+        -n|-E|-H|-S) shift ;;
+        -u)
+            [ "$#" -ge 2 ] || { echo "sudo: -u needs a user" >&2; exit 2; }
+            [ "$2" = root ] || { echo "sudo: GHL only has the root user" >&2; exit 1; }
+            shift 2
+            ;;
+        *) break ;;
+    esac
+done
+[ "$#" -gt 0 ] || { echo "usage: sudo command [args...]" >&2; exit 2; }
+exec "$@"

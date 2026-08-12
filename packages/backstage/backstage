@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+# Inside an existing Wayland session, run the UI directly. From the GHL
+# console, bring up the complete standalone Gamescope session.
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    exec backstage-ui "$@"
+fi
+
+exec backstage-session "$@"

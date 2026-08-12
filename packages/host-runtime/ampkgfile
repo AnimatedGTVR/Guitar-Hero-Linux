@@ -1,0 +1,7 @@
+pkgname = host-runtime
+pkgver = 1.0
+pkgrel = 11
+pkgdesc = "Shared runtime libraries and TLS roots for hosted GHL tools"
+files = (
+    build/host-runtime-root  /
+)

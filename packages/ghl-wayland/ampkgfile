@@ -1,0 +1,10 @@
+pkgname = ghl-wayland
+pkgver = 0.1
+pkgrel = 21
+pkgdesc = "Minimal Gamescope Wayland/XWayland session for GHL"
+depends = (
+    host-runtime
+)
+files = (
+    build/wayland-root  /
+)

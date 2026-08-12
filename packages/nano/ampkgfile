@@ -1,0 +1,10 @@
+pkgname = nano
+pkgver = 9.1
+pkgrel = 2
+pkgdesc = "Friendly terminal text editor"
+depends = (
+    host-runtime
+)
+files = (
+    build/nano-root  /
+)

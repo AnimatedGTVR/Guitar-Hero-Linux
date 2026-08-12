@@ -1,0 +1,11 @@
+pkgname = clonehero
+pkgver = 1.1.0.6142
+pkgrel = 5
+pkgdesc = "Clone Hero launcher, verified installer, and platform diagnostics"
+depends = (
+    busybox
+    curl
+)
+files = (
+    packages/clonehero/clonehero  usr/bin/clonehero
+)

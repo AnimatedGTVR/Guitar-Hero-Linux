@@ -99,6 +99,23 @@ func TestInstallUnknown(t *testing.T) {
 	}
 }
 
+func TestInstallSkipsSatisfiedDependency(t *testing.T) {
+	c, root := newTestCore(t)
+	if _, err := c.Install("busybox"); err != nil {
+		t.Fatal(err)
+	}
+	done, err := c.Install("base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(done) != 1 || done[0] != "base" {
+		t.Fatalf("installed = %v, want only base", done)
+	}
+	if _, err := os.Stat(filepath.Join(root, "usr/etc/ghl-release")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSearch(t *testing.T) {
 	c, _ := newTestCore(t)
 	matches, err := c.Search("base")

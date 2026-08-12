@@ -1,0 +1,10 @@
+pkgname = git
+pkgver = 2.55.0
+pkgrel = 1
+pkgdesc = "Git CLI with HTTPS transport (staged from the build host)"
+depends = (
+    host-runtime
+)
+files = (
+    build/git-root  /
+)

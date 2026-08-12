@@ -1,0 +1,24 @@
+#!/bin/sh
+# Minimal udhcpc client script for GHL: configures the interface when a
+# lease is obtained. Modeled on busybox's simple.script.
+
+[ -n "$1" ] || { echo "Error: should be called from udhcpc"; exit 1; }
+
+case "$1" in
+    deconfig)
+        ifconfig "$interface" 0.0.0.0
+        ;;
+
+    bound | renew)
+        ifconfig "$interface" "$ip" netmask "${subnet:-255.255.255.0}" \
+            broadcast "${broadcast:-+}"
+        if [ -n "$router" ]; then
+            route add default gw "${router%% *}" 2>/dev/null || true
+        fi
+        : > /etc/resolv.conf
+        for ns in $dns; do
+            echo "nameserver $ns" >> /etc/resolv.conf
+        done
+        echo "GHL: eth0 up: $ip"
+        ;;
+esac

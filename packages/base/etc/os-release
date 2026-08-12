@@ -1,0 +1,8 @@
+NAME="Guitar Hero Linux"
+PRETTY_NAME="Guitar Hero Linux 0.1 Encore"
+ID=ghl
+VERSION_ID="0.1"
+VERSION="0.1 (Encore)"
+VERSION_CODENAME=encore
+BUILD_ID="first-set"
+GHL_SHELL="Backstage"

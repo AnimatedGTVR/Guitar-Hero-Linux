@@ -1,0 +1,10 @@
+pkgname = btop
+pkgver = 1.4.7
+pkgrel = 1
+pkgdesc = "Interactive resource monitor"
+depends = (
+    host-runtime
+)
+files = (
+    build/optional-tools/btop  usr/bin/btop
+)

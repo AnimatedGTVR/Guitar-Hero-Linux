@@ -1,10 +1,23 @@
 pkgname = base
 pkgver = 1.0
-pkgrel = 1
+pkgrel = 5
 pkgdesc = "GHL base system meta-package"
 depends = (
     busybox
+    ghl-init
+    fastfetch
+    ghl-installer
 )
 files = (
-    packages/base/ghl-release  usr/etc/ghl-release
+    packages/base/ghl-release            etc/ghl-release
+    packages/base/etc/os-release         etc/os-release
+    packages/base/etc/passwd             etc/passwd
+    packages/base/etc/group              etc/group
+    packages/base/etc/initrc             etc/initrc
+    packages/base/etc/profile            etc/profile
+    packages/base/usr/share/udhcpc/default.script  usr/share/udhcpc/default.script
+    packages/base/usr/bin/sudo             usr/bin/sudo
+    packages/base/usr/bin/ghl              usr/bin/ghl
+    packages/base/usr/bin/ghl-console-fit  usr/bin/ghl-console-fit
+    packages/base/root/profile             root/.profile
 )

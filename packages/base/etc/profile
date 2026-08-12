@@ -1,0 +1,36 @@
+# GHL login profile — sourced by login shells (the display console session).
+PATH=/bin:/sbin:/usr/bin:/usr/sbin
+AMPKG_REPO=/usr/share/ampkg/repo
+HOME=/root
+USER=root
+LOGNAME=root
+PS1='\[\033[1;36m\]root@ghl\[\033[0m\]:\w# '
+export PATH AMPKG_REPO HOME USER LOGNAME PS1
+
+# The first graphical boot starts in the installer. Its completion stamp lives
+# on the real root filesystem, so interrupted setup safely resumes next boot
+# while later boots go directly to Backstage.
+if [ "${GHL_DISPLAY:-0}" = "1" ]; then
+    # Remove kernel boot messages before drawing the interactive shell UI.
+    [ -x /usr/bin/ghl-console-fit ] && ghl-console-fit
+    clear
+    FIRST_BOOT_STAMP=/var/lib/ghl/first-boot-complete
+    if [ ! -e "$FIRST_BOOT_STAMP" ] && [ -x /usr/bin/installer ]; then
+        if GHL_FIRST_BOOT=1 installer; then
+            mkdir -p /var/lib/ghl
+            printf 'GHL first-boot setup completed\n' >"$FIRST_BOOT_STAMP"
+        else
+            echo "First-boot setup was interrupted; it will open again next boot."
+            sleep 2
+        fi
+        [ -x /usr/bin/ghl-console-fit ] && ghl-console-fit
+        clear
+    fi
+    if [ -f /etc/ghl/backstage ] && [ -x /usr/bin/backstage ]; then
+        backstage
+        [ -x /usr/bin/ghl-console-fit ] && ghl-console-fit
+        clear
+    fi
+    [ -x /usr/bin/fastfetch ] && fastfetch
+    echo "Type 'backstage' for the game shell, 'ghl doctor' for checks, or 'installer' to install GHL."
+fi

@@ -1,0 +1,239 @@
+#!/bin/sh
+set -eu
+
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/0}
+export SDL_VIDEODRIVER=wayland
+export QT_QPA_PLATFORM=wayland
+export GDK_BACKEND=wayland
+mkdir -p "$XDG_RUNTIME_DIR" /var/log
+chmod 0700 "$XDG_RUNTIME_DIR"
+
+SEATD_PID=
+XORG_PID=
+cleanup() {
+    if [ -n "$XORG_PID" ]; then
+        kill "$XORG_PID" 2>/dev/null || true
+        wait "$XORG_PID" 2>/dev/null || true
+        XORG_PID=
+    fi
+    if [ -n "$SEATD_PID" ]; then
+        kill "$SEATD_PID" 2>/dev/null || true
+        wait "$SEATD_PID" 2>/dev/null || true
+        SEATD_PID=
+    fi
+}
+trap cleanup EXIT INT TERM
+
+seatd -g root &
+SEATD_PID=$!
+sleep 1
+export LIBSEAT_BACKEND=seatd
+
+VIRTIO_GPU=0
+for vendor in /sys/class/drm/card*/device/vendor; do
+    if [ -r "$vendor" ] && [ "$(cat "$vendor")" = 0x1af4 ]; then
+        export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/virtio_icd.json
+        VIRTIO_GPU=1
+        break
+    fi
+done
+
+# Prefer the first connected connector's preferred DRM mode. Backstage draws
+# through its own 1280x720 logical canvas and letterboxes safely; the session
+# itself still needs to match the actual television or monitor.
+SESSION_WIDTH=${GHL_DISPLAY_WIDTH:-}
+SESSION_HEIGHT=${GHL_DISPLAY_HEIGHT:-}
+if [ -z "$SESSION_WIDTH" ] || [ -z "$SESSION_HEIGHT" ]; then
+    for connector in /sys/class/drm/card*-*; do
+        [ -r "$connector/status" ] || continue
+        [ "$(cat "$connector/status")" = connected ] || continue
+        [ -r "$connector/modes" ] || continue
+        mode=$(sed -n '1p' "$connector/modes")
+        case "$mode" in
+            *x*)
+                SESSION_WIDTH=${mode%x*}
+                SESSION_HEIGHT=${mode#*x}
+                break
+                ;;
+        esac
+    done
+fi
+case "$SESSION_WIDTH" in ''|*[!0-9]*) SESSION_WIDTH=1280 ;; esac
+case "$SESSION_HEIGHT" in ''|*[!0-9]*) SESSION_HEIGHT=720 ;; esac
+if [ "$SESSION_WIDTH" -lt 640 ] || [ "$SESSION_WIDTH" -gt 7680 ]; then SESSION_WIDTH=1280; fi
+if [ "$SESSION_HEIGHT" -lt 480 ] || [ "$SESSION_HEIGHT" -gt 4320 ]; then SESSION_HEIGHT=720; fi
+export CLONEHERO_WIDTH=${CLONEHERO_WIDTH:-$SESSION_WIDTH}
+export CLONEHERO_HEIGHT=${CLONEHERO_HEIGHT:-$SESSION_HEIGHT}
+
+MARKER=/run/ghl-next-session
+GAMESCOPE_LOG=/var/log/backstage-gamescope.log
+GAME_LOG=/var/log/clonehero-session.log
+NEXT=
+STATUS=1
+
+read_marker() {
+    NEXT=
+    if [ -f "$MARKER" ]; then
+        NEXT="$(cat "$MARKER")"
+        rm -f "$MARKER"
+    fi
+}
+
+run_gamescope() {
+    output=$1
+    shift
+    gamescope \
+        --backend drm \
+        --disable-layers \
+        --disable-color-management \
+        --expose-wayland \
+        --xwayland-count 1 \
+        --force-windows-fullscreen \
+        -W "$SESSION_WIDTH" -H "$SESSION_HEIGHT" \
+        -w "$SESSION_WIDTH" -h "$SESSION_HEIGHT" -r 60 \
+        -- "$@" >"$output" 2>&1
+}
+
+run_xorg_session() {
+    unset WAYLAND_DISPLAY DISPLAY VK_DRIVER_FILES
+    export SDL_VIDEODRIVER=x11
+    # VirtIO/Venus currently fails DRM command submission in this guest.
+    # llvmpipe is slower, but gives Backstage and Unity a stable GLX context.
+    export LIBGL_ALWAYS_SOFTWARE=1
+    mkdir -p /var/lib/xkb /tmp/.X11-unix
+    chmod 1777 /tmp /var/lib/xkb /tmp/.X11-unix
+
+    XORG_CONFIG=/run/backstage-xorg.conf
+    cp /etc/X11/xorg.conf "$XORG_CONFIG"
+    {
+        printf '\nSection "ServerLayout"\n'
+        printf '    Identifier "GHL Layout"\n'
+        printf '    Screen 0 "GHL Screen"\n'
+        input_number=0
+        for input_device in /dev/input/event*; do
+            [ -e "$input_device" ] || continue
+            printf '    InputDevice "GHL Input %s" "SendCoreEvents"\n' "$input_number"
+            input_number=$((input_number + 1))
+        done
+        printf 'EndSection\n'
+
+        input_number=0
+        for input_device in /dev/input/event*; do
+            [ -e "$input_device" ] || continue
+            printf '\nSection "InputDevice"\n'
+            printf '    Identifier "GHL Input %s"\n' "$input_number"
+            printf '    Driver "evdev"\n'
+            printf '    Option "Device" "%s"\n' "$input_device"
+            printf 'EndSection\n'
+            input_number=$((input_number + 1))
+        done
+    } >>"$XORG_CONFIG"
+
+    printf 'Configured %s input devices for Xorg.\n' "$input_number"
+    Xorg :0 vt1 -config "$XORG_CONFIG" -keeptty -noreset -nolisten tcp \
+        >/var/log/backstage-xorg.log 2>&1 &
+    XORG_PID=$!
+
+    attempt=0
+    while [ "$attempt" -lt 100 ]; do
+        [ -S /tmp/.X11-unix/X0 ] && break
+        kill -0 "$XORG_PID" 2>/dev/null || break
+        sleep 0.1
+        attempt=$((attempt + 1))
+    done
+    if [ ! -S /tmp/.X11-unix/X0 ]; then
+        printf '\033[1;31mXorg fallback failed. See /var/log/backstage-xorg.log\033[0m\n'
+        STATUS=1
+        return
+    fi
+
+    export DISPLAY=:0
+    mode=menu
+    while :; do
+        rm -f "$MARKER"
+        if [ "$mode" = game ]; then
+            # Backstage's fullscreen window is already destroyed here, so the
+            # game becomes the display's sole fullscreen client. Return to the
+            # menu when the game exits or fails.
+            clonehero run >"$GAME_LOG" 2>&1
+            STATUS=$?
+            mode=menu
+            continue
+        fi
+
+        backstage-ui
+        STATUS=$?
+        read_marker
+        case "$NEXT" in
+            clonehero) mode=game ;;
+            desktop|installer|clonehero-install) return ;;
+            *) return ;;
+        esac
+    done
+}
+
+clear
+printf '\033[1;36mStarting Backstage\033[0m\n'
+printf 'Preparing the %sx%s game session...\n' "$SESSION_WIDTH" "$SESSION_HEIGHT"
+
+set +e
+USE_XORG=$VIRTIO_GPU
+if [ "$USE_XORG" -eq 0 ]; then
+    rm -f "$MARKER"
+    run_gamescope "$GAMESCOPE_LOG" backstage-ui
+    STATUS=$?
+    read_marker
+
+    # A successful menu launch owns DRM until the user leaves it. If it dies
+    # before doing anything, use the broadly compatible Xorg path instead.
+    if [ "$STATUS" -ne 0 ] && [ -z "$NEXT" ]; then
+        USE_XORG=1
+    else
+        while :; do
+            case "$NEXT" in
+                clonehero)
+                    rm -f "$MARKER"
+                    run_gamescope "$GAME_LOG" clonehero run
+                    STATUS=$?
+                    # The game ended: create a fresh menu session.
+                    rm -f "$MARKER"
+                    run_gamescope "$GAMESCOPE_LOG" backstage-ui
+                    STATUS=$?
+                    read_marker
+                    ;;
+                desktop|installer|clonehero-install) break ;;
+                *) break ;;
+            esac
+        done
+    fi
+fi
+
+if [ "$USE_XORG" -eq 1 ]; then
+    if [ "$VIRTIO_GPU" -eq 1 ]; then
+        printf 'QEMU VirtIO detected; using the Xorg game session.\n' >"$GAMESCOPE_LOG"
+    fi
+    printf '\033[1;33mUsing the Xorg game session.\033[0m\n'
+    printf 'Diagnostic log: %s\n' "$GAMESCOPE_LOG"
+    run_xorg_session
+fi
+set -e
+
+cleanup
+trap - EXIT INT TERM
+
+case "$NEXT" in
+    desktop)
+        ghl-desktop
+        exec backstage
+        ;;
+    installer)
+        installer
+        exec backstage
+        ;;
+    clonehero-install)
+        clonehero install
+        exec backstage
+        ;;
+esac
+
+exit "$STATUS"

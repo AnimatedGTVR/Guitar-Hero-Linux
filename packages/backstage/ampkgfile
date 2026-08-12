@@ -1,0 +1,16 @@
+pkgname = backstage
+pkgver = 0.1
+pkgrel = 35
+pkgdesc = "Controller-first GHL game shell"
+depends = (
+    ghl-wayland
+    clonehero
+    desktop
+)
+files = (
+    build/out/backstage                  usr/bin/backstage-ui
+    packages/backstage/backstage         usr/bin/backstage
+    packages/backstage/backstage-session usr/bin/backstage-session
+    packages/backstage/xorg.conf          etc/X11/xorg.conf
+    packages/backstage/enabled           etc/ghl/backstage
+)

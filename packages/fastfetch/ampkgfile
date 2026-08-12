@@ -1,0 +1,10 @@
+pkgname = fastfetch
+pkgver = 2.66.0
+pkgrel = 1
+pkgdesc = "Fast system information with the Guitar Hero Linux logo"
+depends = (
+    host-runtime
+)
+files = (
+    build/fastfetch-root  /
+)
